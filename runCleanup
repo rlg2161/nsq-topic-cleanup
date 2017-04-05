@@ -1,0 +1,3 @@
+#!/bin/sh
+
+/go/src/github.com/rlg2161/nsq-topic-cleanup/nsq-topic-cleanup

@@ -87,6 +87,8 @@ func TopicCleanup(filename string) {
 		for _, topic := range topicsToRemove {
 			delete(topicCounterMap, topic)
 		}
+	} else {
+		log.Println("Paused topic or channel found -- not deleting any topics until pause is removed")
 	}
 
 	WriteQueueReport(filename, topicCounterMap)

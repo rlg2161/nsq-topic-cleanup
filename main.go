@@ -34,6 +34,8 @@ func TopicCleanup(filename string) {
 	topicCounterMap := CreateTopicCounterMap()
 	nsqdNodes := CreateNodeProducerList()
 
+	pausedTopicOrChannel := false
+
 	for _, producer := range nsqdNodes.Producers {
 		nsqdNodeAddress := producer.BroadcastAddress
 		producersList = append(producersList, nsqdNodeAddress)
@@ -41,6 +43,14 @@ func TopicCleanup(filename string) {
 			queryString := fmt.Sprintf("http://%s:4151/stats?topic=%s&format=json", nsqdNodeAddress, topic)
 			nsqdTopicReport := GetNSQDTopicStats(queryString)
 			if nsqdTopicReport.StatusCode == 200 {
+				if nsqdTopicReport.Data.Topics[0].Paused {
+					pausedTopicOrChannel = true
+				}
+				for _, channel := range nsqdTopicReport.Data.Topics[0].Channels {
+					if channel.Paused {
+						pausedTopicOrChannel = true
+					}
+				}
 				if strings.Contains(nsqdTopicReport.Data.Topics[0].TopicName, NSQ_TOPIC_CONTAINS_FILTER) == true {
 					topicCounterMap[nsqdTopicReport.Data.Topics[0].TopicName] = nsqdTopicReport.Data.Topics[0].MessageCount
 				}
@@ -60,21 +70,23 @@ func TopicCleanup(filename string) {
 
 	client := &http.Client{}
 	topicsToRemove := []string{}
-	for topic, _ := range lastQueueStatsMap {
-		if lastQueueStatsMap[topic] == topicCounterMap[topic] {
-			// topic is no longer being produced since all counts are the same
-			err := DeleteTopicFromCluster(client, topic, producersList)
-			if err != nil {
-				log.Println("Failed to delete topic %s from cluster: %s\n", topic, err.Error())
-			} else {
-				log.Println("Deleted %s topic from cluster\n", topic)
+	if pausedTopicOrChannel != true {
+		for topic, _ := range lastQueueStatsMap {
+			if lastQueueStatsMap[topic] == topicCounterMap[topic] {
+				// topic is no longer being produced since all counts are the same
+				err := DeleteTopicFromCluster(client, topic, producersList)
+				if err != nil {
+					log.Println("Failed to delete topic %s from cluster: %s\n", topic, err.Error())
+				} else {
+					log.Println("Deleted %s topic from cluster\n", topic)
+				}
+				topicsToRemove = append(topicsToRemove, topic)
 			}
-			topicsToRemove = append(topicsToRemove, topic)
 		}
-	}
-	// do in another loop so we dont screw up iteration over topics list
-	for _, topic := range topicsToRemove {
-		delete(topicCounterMap, topic)
+		// do in another loop so we dont screw up iteration over topics list
+		for _, topic := range topicsToRemove {
+			delete(topicCounterMap, topic)
+		}
 	}
 
 	WriteQueueReport(filename, topicCounterMap)
